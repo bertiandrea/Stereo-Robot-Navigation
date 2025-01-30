@@ -281,7 +281,6 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.imshow(moravec_map, vmin=moravec_map.min(), vmax=moravec_map.max(), cmap='gray')
                 plt.subplot(2,3,6)
                 plt.imshow(planar_view)
-                plt.title('Display')
                 plt.pause(0.000001)
             ######################################################
             # Update dataframe with current frame infos
