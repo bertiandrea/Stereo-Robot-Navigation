@@ -201,9 +201,6 @@ def main(numDisparities, blockSize, imageDim, display = False):
     frame_counter = 0
     disparity_range = range(0, numDisparities) #Starting Disparity Range
     try:
-        for i in range(0, 29):
-            Lret, frameL = LCameraView.read()
-            Rret, frameR = RCameraView.read()
         while LCameraView.isOpened() and RCameraView.isOpened():
             frame_counter += 1
             Lret, frameL = LCameraView.read()
@@ -235,6 +232,11 @@ def main(numDisparities, blockSize, imageDim, display = False):
             mainDisparity = np.average(disparity_map[moravec_mask])
             z_moravec = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
+            output_image = generateOutputImage(frameL, z, imageDim, MINIMUM_DISTANCE)
+            ######################################################
+            coords, angle = computeObstaclesCoords(disparity_map, 5)
+            planar_view = drawPlanarView(coords, angle)
+            ######################################################
             _, h, w = computeChessboard(imgL, imageDim)
             ######################################################
             if (h != None and w != None):
@@ -264,11 +266,6 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 Hdiff_MORAVEC = None
                 Wdiff_MORAVEC = None
             ######################################################
-            output_image = generateOutputImage(frameL, z, imageDim, MINIMUM_DISTANCE)
-            ######################################################
-            coords, angle = computeObstaclesCoords(disparity_map, 5)
-            planar_view = drawPlanarView(coords, angle)
-            ######################################################
             if(display):
                 plt.figure('Display'); 
                 plt.clf()
@@ -286,7 +283,6 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.imshow(planar_view)
                 plt.title('Display')
                 plt.pause(0.000001)
-                plt.show()
             ######################################################
             # Update dataframe with current frame infos
             df.loc[len(df)] = {
@@ -351,9 +347,9 @@ def main(numDisparities, blockSize, imageDim, display = False):
 
 def getParams():
     parser = argparse.ArgumentParser(prog='CVproject', description='Computer Vision Project')
-    parser.add_argument('--imageDim',default='100', help='Image box dimension to cut from original frames', type=int)
+    parser.add_argument('--imageDim',default='200', help='Image box dimension to cut from original frames', type=int)
     parser.add_argument('--numDisparities',default='128', help='Disparities number parameter for disparity map algorithm', type=int)
-    parser.add_argument('--blockSize',default=15, help='Block size parameter for disparity map algorithm', type=int)
+    parser.add_argument('--blockSize',default=BEST_BLOCKSIZE_VALUE, help='Block size parameter for disparity map algorithm', type=int)
     parser.add_argument('--display',default='False', help='Display the output', type=bool)
     return parser.parse_args()
 
