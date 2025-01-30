@@ -129,9 +129,6 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
             keypoint_matches, imgL_aligned, imgR_aligned = alignImages(imgL, imgR)
-            if np.count_nonzero(imgL_aligned) == 0 or np.count_nonzero(imgR_aligned) == 0:
-                imgL_aligned = imgL
-                imgR_aligned = imgR
             ######################################################
             cv_disparity_map = computeCVDisparityMap(imgL_aligned, imgR_aligned, numDisparities, blockSize, imageDim)
             mask = cv_disparity_map >= 0 # -1 values are not considered (no disparity)
@@ -144,7 +141,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             print("Z_Disparity {}".format(z/1000))
             ######################################################
-            _, h, w = computeChessboard(imgL, imageDim)
+            imgChessboard, h, w = computeChessboard(imgL, imageDim)
             ######################################################
             if (h != None and w != None):
                 HComputed = (z_cv * h) / FOCAL_LENGHT
@@ -178,6 +175,8 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.imshow(cv_disparity_map, vmin=cv_disparity_map.min(), vmax=cv_disparity_map.max(), cmap='gray')
                 plt.subplot(2,3,5)
                 plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
+                plt.subplot(2,3,6)
+                plt.imshow(imgChessboard, cmap='gray')
                 plt.pause(0.000001)
             ######################################################
             df.loc[len(df)] = {
