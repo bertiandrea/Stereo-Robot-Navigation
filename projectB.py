@@ -86,7 +86,7 @@ def generateOutputImage(frame, distance, imgSize, alarm):
     cv.putText(img = output_image, text = "Distance: {:.2f}m".format(distance/1000), org=(10, 30),
                fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = color, thickness = 5, lineType = cv.LINE_AA)
     return output_image
-
+##############################################################################################################
 def computeObstaclesCoords(disparity_map, num_stripes):
     height, width = disparity_map.shape
     stripe_width = width // num_stripes
@@ -133,7 +133,7 @@ def drawPlanarView(norm_coords, angle):
     for c in scaled_coords:
         cv.rectangle(view, (int(c[0] - obst_width), int(c[1] - 4)), (int(c[0] + obst_width), int(c[1] + 4)), (0, 0, 0), cv.FILLED)
     # Disegno dell'angolo
-    cv.putText(img=view, text="t={:.1f} deg".format(angle), org=(24, 320),
+    cv.putText(img=view, text="{:.1f} deg".format(angle), org=(24, 320),
                 fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (127, 127, 127), thickness = 5, lineType = cv.LINE_AA)
     # Disegno della retta che approssima gli ostacoli
     coef = np.polyfit(scaled_coords[:,0], scaled_coords[:,1], 1)
@@ -167,6 +167,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             output_image = generateOutputImage(frameL, z, imageDim, MINIMUM_DISTANCE)
+            ######################################################
             coords, angle = computeObstaclesCoords(disparity_map, 5)
             planar_view = drawPlanarView(coords, angle)
             ######################################################
@@ -200,9 +201,21 @@ def main(numDisparities, blockSize, imageDim, display = False):
         df = df[df['Wdiff'] != None]
         df['Hdiff'] = df.Hdiff.rolling(SMOOTH).mean()
         df['Wdiff'] = df.Wdiff.rolling(SMOOTH).mean()
-        df.plot(subplots=True, title="H_Error {} W_Error {}".format(df['Hdiff'].mean(),df['Wdiff'].mean()))
+        plt.figure()
+        plt.plot(df['Z(m)'], label='Z(m)', color='blue')
+        plt.title("Z(m)")
+        plt.figure()
+        plt.plot(df['Hdiff'], label='Hdiff', color='blue')
+        plt.title("Hdiff")
+        plt.legend()
+        plt.figure()
+        plt.plot(df['Wdiff'], label='Wdiff', color='blue')
+        plt.title("Wdiff")
+        plt.legend()
         plt.tight_layout()
         plt.show()
+        print("Hdiff {}".format(df['Hdiff'].mean()))
+        print("Wdiff {}".format(df['Wdiff'].mean()))
     except KeyboardInterrupt:
         LCameraView.release()
         RCameraView.release()

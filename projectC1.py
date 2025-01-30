@@ -101,16 +101,13 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
             disparity_map, map = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
-            mainDisparity = np.average(disparity_map)
-            z = (FOCAL_LENGHT * BASELINE) / mainDisparity
-            print("Z_Disparity {}".format(z/1000))
             ######################################################
             ratio_map = secondBestRatio(map)
-            ratio_mask = ratio_map > np.percentile(ratio_map, 70)
+            ratio_mask = ratio_map >= np.percentile(ratio_map, 70)
             mainDisparity = np.average(disparity_map[ratio_mask])
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
-            _, h, w = computeChessboard(imgL, imageDim)
+            imgChessboard, h, w = computeChessboard(imgL, imageDim)
             ######################################################
             if (h != None and w != None):
                 HComputed = (z * h) / FOCAL_LENGHT
@@ -126,10 +123,12 @@ def main(numDisparities, blockSize, imageDim, display = False):
             if display:
                 plt.figure('Display'); 
                 plt.clf()
-                plt.subplot(1,2,1)
+                plt.subplot(1,3,1)
                 plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
-                plt.subplot(1,2,2)
+                plt.subplot(1,3,2)
                 plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
+                plt.subplot(1,3,3)
+                plt.imshow(imgChessboard, cmap='gray')
                 plt.pause(0.000001)
             ######################################################
             df.loc[len(df)] = {
@@ -142,9 +141,21 @@ def main(numDisparities, blockSize, imageDim, display = False):
         df = df[df['Wdiff'] != None]
         df['Hdiff'] = df.Hdiff.rolling(SMOOTH).mean()
         df['Wdiff'] = df.Wdiff.rolling(SMOOTH).mean()
-        df.plot(subplots=True, title="H_Error {} W_Error {}".format(df['Hdiff'].mean(),df['Wdiff'].mean()))
+        plt.figure()
+        plt.plot(df['Z(m)'], label='Z(m)', color='blue')
+        plt.title("Z(m)")
+        plt.figure()
+        plt.plot(df['Hdiff'], label='Hdiff', color='blue')
+        plt.title("Hdiff")
+        plt.legend()
+        plt.figure()
+        plt.plot(df['Wdiff'], label='Wdiff', color='blue')
+        plt.title("Wdiff")
+        plt.legend()
         plt.tight_layout()
         plt.show()
+        print("Hdiff {}".format(df['Hdiff'].mean()))
+        print("Wdiff {}".format(df['Wdiff'].mean()))
     except KeyboardInterrupt:
         LCameraView.release()
         RCameraView.release()

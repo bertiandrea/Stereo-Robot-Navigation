@@ -132,7 +132,7 @@ def generateOutputImage(frame, distance, imgSize, alarm):
     cv.putText(img = output_image, text = "Distance: {:.2f}m".format(distance/1000), org=(10, 30),
                fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = color, thickness = 5, lineType = cv.LINE_AA)
     return output_image
-
+##############################################################################################################
 def computeObstaclesCoords(disparity_map, num_stripes):
     height, width = disparity_map.shape
     stripe_width = width // num_stripes
@@ -179,7 +179,7 @@ def drawPlanarView(norm_coords, angle):
     for c in scaled_coords:
         cv.rectangle(view, (int(c[0] - obst_width), int(c[1] - 4)), (int(c[0] + obst_width), int(c[1] + 4)), (0, 0, 0), cv.FILLED)
     # Disegno dell'angolo
-    cv.putText(img=view, text="t={:.1f} deg".format(angle), org=(24, 320),
+    cv.putText(img=view, text="{:.1f} deg".format(angle), org=(24, 320),
                 fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (127, 127, 127), thickness = 5, lineType = cv.LINE_AA)
     # Disegno della retta che approssima gli ostacoli
     coef = np.polyfit(scaled_coords[:,0], scaled_coords[:,1], 1)
@@ -187,20 +187,23 @@ def drawPlanarView(norm_coords, angle):
     l_start = (20, int(poly1d_fn(20)))
     l_end = (360, int(poly1d_fn(360)))
     cv.line(view, l_start, l_end, (0, 127, 0), 3)
-
     return view
+
 def main(numDisparities, blockSize, imageDim, display = False):
     df = pd.DataFrame(columns = [
-        'Hdiff_cv_disparity','Wdiff_cv_disparity',
-        'Hdiff_disparity','Wdiff_disparity',
-        'Hdiff_ratio','Wdiff_ratio',
-        'Hdiff_moravec','Wdiff_moravec'
+        'Hdiff_CV','Wdiff_CV',
+        'Hdiff','Wdiff',
+        'Hdiff_RATIO','Wdiff_RATIO',
+        'Hdiff_MORAVEC','Wdiff_MORAVEC'
         ])
     LCameraView = cv.VideoCapture('robotL.avi')
     RCameraView = cv.VideoCapture('robotR.avi')
     frame_counter = 0
     disparity_range = range(0, numDisparities) #Starting Disparity Range
     try:
+        for i in range(0, 29):
+            Lret, frameL = LCameraView.read()
+            Rret, frameR = RCameraView.read()
         while LCameraView.isOpened() and RCameraView.isOpened():
             frame_counter += 1
             Lret, frameL = LCameraView.read()
@@ -214,13 +217,13 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
             cv_disparity_map = computeCVDisparityMap(imgL, imgR, numDisparities, blockSize, imageDim)
-            mask = cv_disparity_map > 0 # -1 values are not considered (no disparity)
+            mask = cv_disparity_map >= 0 # -1 values are not considered (no disparity)
             mainDisparity = np.average(cv_disparity_map[mask])
             z_cv = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             disparity_map, map = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
             mainDisparity = np.average(disparity_map)
-            z_disparity = (FOCAL_LENGHT * BASELINE) / mainDisparity
+            z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             ratio_map = secondBestRatio(map)
             ratio_mask = ratio_map > np.percentile(ratio_map, 70)
@@ -237,31 +240,32 @@ def main(numDisparities, blockSize, imageDim, display = False):
             if (h != None and w != None):
                 HComputed = (z_cv * h) / FOCAL_LENGHT
                 WComputed = (z_cv * w) / FOCAL_LENGHT
-                Hdiff_cv_disparity = abs(HComputed - H)
-                Wdiff_cv_disparity = abs(WComputed - W)
-                HComputed = (z_disparity * h) / FOCAL_LENGHT
-                WComputed = (z_disparity * w) / FOCAL_LENGHT
-                Hdiff_disparity = abs(HComputed - H)
-                Hdiff_disparity = abs(WComputed - W)
+                Hdiff_CV = abs(HComputed - H)
+                Wdiff_CV = abs(WComputed - W)
+                HComputed = (z * h) / FOCAL_LENGHT
+                WComputed = (z * w) / FOCAL_LENGHT
+                Hdiff = abs(HComputed - H)
+                Hdiff = abs(WComputed - W)
                 HComputed = (z_ratio * h) / FOCAL_LENGHT
                 WComputed = (z_ratio * w) / FOCAL_LENGHT
-                Hdiff_ratio = abs(HComputed - H)
-                Wdiff_ratio = abs(WComputed - W)
+                Hdiff_RATIO = abs(HComputed - H)
+                Wdiff_RATIO = abs(WComputed - W)
                 HComputed = (z_moravec * h) / FOCAL_LENGHT
                 WComputed = (z_moravec * w) / FOCAL_LENGHT
-                Hdiff_moravec = abs(HComputed - H)
-                Wdiff_moravec = abs(WComputed - W)
+                Hdiff_MORAVEC = abs(HComputed - H)
+                Wdiff_MORAVEC = abs(WComputed - W)
             else:
-                Hdiff_cv_disparity = None
-                Wdiff_cv_disparity = None
-                Hdiff_disparity = None
-                Wdiff_disparity = None
-                Hdiff_ratio = None
-                Wdiff_ratio = None
-                Hdiff_moravec = None
-                Wdiff_moravec = None
+                Hdiff_CV = None
+                Wdiff_CV = None
+                Hdiff = None
+                Wdiff = None
+                Hdiff_RATIO = None
+                Wdiff_RATIO = None
+                Hdiff_MORAVEC = None
+                Wdiff_MORAVEC = None
             ######################################################
-            output_image = generateOutputImage(frameL, z_disparity, imageDim, MINIMUM_DISTANCE)
+            output_image = generateOutputImage(frameL, z, imageDim, MINIMUM_DISTANCE)
+            ######################################################
             coords, angle = computeObstaclesCoords(disparity_map, 5)
             planar_view = drawPlanarView(coords, angle)
             ######################################################
@@ -275,59 +279,71 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.subplot(2,3,3)
                 plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
                 plt.subplot(2,3,4)
-                plt.imshow(ratio_mask, vmin=ratio_mask.min(), vmax=ratio_mask.max(), cmap='gray')
+                plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
                 plt.subplot(2,3,5)
-                plt.imshow(moravec_mask, vmin=moravec_mask.min(), vmax=moravec_mask.max(), cmap='gray')
+                plt.imshow(moravec_map, vmin=moravec_map.min(), vmax=moravec_map.max(), cmap='gray')
                 plt.subplot(2,3,6)
                 plt.imshow(planar_view)
                 plt.title('Display')
                 plt.pause(0.000001)
+                plt.show()
             ######################################################
             # Update dataframe with current frame infos
             df.loc[len(df)] = {
-                'Hdiff_cv_disparity': Hdiff_cv_disparity,
-                'Wdiff_cv_disparity': Wdiff_cv_disparity,
-                'Hdiff_disparity': Hdiff_disparity,
-                'Wdiff_disparity': Wdiff_disparity,
-                'Hdiff_ratio': Hdiff_ratio,
-                'Wdiff_ratio': Wdiff_ratio,
-                'Hdiff_moravec': Hdiff_moravec,
-                'Wdiff_moravec': Wdiff_moravec
+                'Hdiff_CV': Hdiff_CV,
+                'Wdiff_CV': Wdiff_CV,
+                'Hdiff': Hdiff,
+                'Wdiff': Wdiff,
+                'Hdiff_RATIO': Hdiff_RATIO,
+                'Wdiff_RATIO': Wdiff_RATIO,
+                'Hdiff_MORAVEC': Hdiff_MORAVEC,
+                'Wdiff_MORAVEC': Wdiff_MORAVEC
             }
             ######################################################
             print("Main Disparity: {}".format(mainDisparity))
             disparity_range = computeDisparityRange(mainDisparity)
             print("Disparity Range: {} - {}".format(disparity_range[0],disparity_range[-1]))
             ######################################################
-        df= df[df['Hdiff_cv_disparity'] != None]
-        df= df[df['Wdiff_cv_disparity'] != None]
-        df= df[df['Hdiff_disparity'] != None]
-        df= df[df['Wdiff_disparity'] != None]
-        df= df[df['Hdiff_ratio'] != None]
-        df= df[df['Wdiff_ratio'] != None]
-        df= df[df['Hdiff_moravec'] != None]
-        df= df[df['Wdiff_moravec'] != None]
-        df['Hdiff_cv_disparity'] = df.Hdiff_cv_disparity.rolling(SMOOTH).mean()
-        df['Wdiff_cv_disparity'] = df.Wdiff_cv_disparity.rolling(SMOOTH).mean()
-        df['Hdiff_disparity'] = df.Hdiff_disparity.rolling(SMOOTH).mean()
-        df['Wdiff_disparity'] = df.Wdiff_disparity.rolling(SMOOTH).mean()
-        df['Hdiff_ratio'] = df.Hdiff_ratio.rolling(SMOOTH).mean()
-        df['Wdiff_ratio'] = df.Wdiff_ratio.rolling(SMOOTH).mean()
-        df['Hdiff_moravec'] = df.Hdiff_moravec.rolling(SMOOTH).mean()
-        df['Wdiff_moravec'] = df.Wdiff_moravec.rolling(SMOOTH).mean()
-        # Plotting dataframe values
-        df.plot(subplots=True)
+        df= df[df['Hdiff_CV'] != None]
+        df= df[df['Wdiff_CV'] != None]
+        df= df[df['Hdiff'] != None]
+        df= df[df['Wdiff'] != None]
+        df= df[df['Hdiff_RATIO'] != None]
+        df= df[df['Wdiff_RATIO'] != None]
+        df= df[df['Hdiff_MORAVEC'] != None]
+        df= df[df['Wdiff_MORAVEC'] != None]
+        df['Hdiff_CV'] = df.Hdiff_CV.rolling(SMOOTH).mean()
+        df['Wdiff_CV'] = df.Wdiff_CV.rolling(SMOOTH).mean()
+        df['Hdiff'] = df.Hdiff.rolling(SMOOTH).mean()
+        df['Wdiff'] = df.Wdiff.rolling(SMOOTH).mean()
+        df['Hdiff_RATIO'] = df.Hdiff_RATIO.rolling(SMOOTH).mean()
+        df['Wdiff_RATIO'] = df.Wdiff_RATIO.rolling(SMOOTH).mean()
+        df['Hdiff_MORAVEC'] = df.Hdiff_MORAVEC.rolling(SMOOTH).mean()
+        df['Wdiff_MORAVEC'] = df.Wdiff_MORAVEC.rolling(SMOOTH).mean()
+        plt.figure()
+        plt.plot(df['Hdiff_CV'], label='Hdiff_CV', color='orange')
+        plt.plot(df['Hdiff'], label='Hdiff', color='blue')
+        plt.plot(df['Hdiff_RATIO'], label='Hdiff_RATIO', color='green')
+        plt.plot(df['Hdiff_MORAVEC'], label='Hdiff_MORAVEC', color='red')
+        plt.title("Hdiff")
+        plt.legend()
+        plt.figure()
+        plt.plot(df['Wdiff_CV'], label='Wdiff_CV', color='orange')
+        plt.plot(df['Wdiff'], label='Wdiff', color='blue')
+        plt.plot(df['Wdiff_RATIO'], label='Wdiff_RATIO', color='green')
+        plt.plot(df['Wdiff_MORAVEC'], label='Wdiff_MORAVEC', color='red')
+        plt.title("Wdiff")
+        plt.legend()
         plt.tight_layout()
         plt.show()
-        # Print global values
-        print("GlobalHdiffErrorCVDisparity {}".format(df['Hdiff_cv_disparity'].mean()))
-        print("GlobalWdiffErrorCVDisparity {}".format(df['Wdiff_cv_disparity'].mean()))
-        print("GlobalHdiffErrorDisparity {}".format(df['Hdiff_disparity'].mean()))
-        print("GlobalWdiffErrorDisparity {}".format(df['Wdiff_disparity'].mean()))
-        print("GlobalHdiffErrorRatio {}".format(df['Hdiff_ratio'].mean()))
-        print("GlobalWdiffErrorRatio {}".format(df['Wdiff_ratio'].mean()))
-        print("GlobalHdiffErrorMoravec {}".format(df['Hdiff_moravec'].mean()))
-        print("GlobalWdiffErrorMoravec {}".format(df['Wdiff_moravec'].mean()))
+        print("Hdiff_CV {}".format(df['Hdiff_CV'].mean()))
+        print("Hdiff {}".format(df['Hdiff'].mean()))
+        print("Hdiff_RATIO {}".format(df['Hdiff_RATIO'].mean()))
+        print("Hdiff_MORAVEC {}".format(df['Hdiff_MORAVEC'].mean()))
+        print("Wdiff_CV {}".format(df['Wdiff_CV'].mean()))
+        print("Wdiff {}".format(df['Wdiff'].mean()))
+        print("Wdiff_RATIO {}".format(df['Wdiff_RATIO'].mean()))
+        print("Wdiff_MORAVEC {}".format(df['Wdiff_MORAVEC'].mean()))
     except KeyboardInterrupt:
         LCameraView.release()
         RCameraView.release()
@@ -335,9 +351,9 @@ def main(numDisparities, blockSize, imageDim, display = False):
 
 def getParams():
     parser = argparse.ArgumentParser(prog='CVproject', description='Computer Vision Project')
-    parser.add_argument('--imageDim',default='200', help='Image box dimension to cut from original frames', type=int)
+    parser.add_argument('--imageDim',default='100', help='Image box dimension to cut from original frames', type=int)
     parser.add_argument('--numDisparities',default='128', help='Disparities number parameter for disparity map algorithm', type=int)
-    parser.add_argument('--blockSize',default=BEST_BLOCKSIZE_VALUE, help='Block size parameter for disparity map algorithm', type=int)
+    parser.add_argument('--blockSize',default=15, help='Block size parameter for disparity map algorithm', type=int)
     parser.add_argument('--display',default='False', help='Display the output', type=bool)
     return parser.parse_args()
 

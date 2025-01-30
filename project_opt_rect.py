@@ -106,7 +106,11 @@ def alignImages(imgL, imgR):
     return keypoint_matches, imgL, imgR_aligned
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
-    df = pd.DataFrame(columns = ['Z_CV(m)','Z(m)','Hdiff','Wdiff'])
+    df = pd.DataFrame(columns = [
+        'Z_CV(m)',
+        'Z(m)',
+        'Hdiff_CV','Wdiff_CV',
+        'Hdiff','Wdiff'])
     LCameraView = cv.VideoCapture('robotL.avi')
     RCameraView = cv.VideoCapture('robotR.avi')
     frame_counter = 0
@@ -130,7 +134,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 imgR_aligned = imgR
             ######################################################
             cv_disparity_map = computeCVDisparityMap(imgL_aligned, imgR_aligned, numDisparities, blockSize, imageDim)
-            mask = cv_disparity_map > 0 # -1 values are not considered (no disparity)
+            mask = cv_disparity_map >= 0 # -1 values are not considered (no disparity)
             mainDisparity = np.average(cv_disparity_map[mask])
             z_cv = (FOCAL_LENGHT * BASELINE) / mainDisparity
             print("Z_Disparity_CV {}".format(z_cv/1000))
@@ -143,6 +147,12 @@ def main(numDisparities, blockSize, imageDim, display = False):
             _, h, w = computeChessboard(imgL, imageDim)
             ######################################################
             if (h != None and w != None):
+                HComputed = (z_cv * h) / FOCAL_LENGHT
+                WComputed = (z_cv * w) / FOCAL_LENGHT
+                print("HComputed_CV {}".format(HComputed), "WComputed_CV {}".format(WComputed))
+                Hdiff_CV = abs(HComputed - H)
+                Wdiff_CV = abs(WComputed - W)
+                print("Hdiff_CV {}".format(Hdiff), "Wdiff_CV {}".format(Wdiff))
                 HComputed = (z * h) / FOCAL_LENGHT
                 WComputed = (z * w) / FOCAL_LENGHT
                 print("HComputed {}".format(HComputed), "WComputed {}".format(WComputed))
@@ -150,6 +160,8 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 Wdiff = abs(WComputed - W)
                 print("Hdiff {}".format(Hdiff), "Wdiff {}".format(Wdiff))
             else:
+                Hdiff_CV = None
+                Wdiff_CV = None
                 Hdiff = None
                 Wdiff = None
             ######################################################
@@ -171,17 +183,38 @@ def main(numDisparities, blockSize, imageDim, display = False):
             df.loc[len(df)] = {
                 'Z_CV(m)' : z_cv/1000,
                 'Z(m)' : z/1000,
-                'Hdiff': Hdiff,
-                'Wdiff': Wdiff
+                'Hdiff_CV': Hdiff_CV, 'Wdiff_CV': Wdiff_CV,
+                'Hdiff': Hdiff, 'Wdiff': Wdiff
             }
             ######################################################
+        df = df[df['Hdiff_CV'] != None]
+        df = df[df['Wdiff_CV'] != None]
         df = df[df['Hdiff'] != None]
         df = df[df['Wdiff'] != None]
+        df['Hdiff_CV'] = df.Hdiff_CV.rolling(SMOOTH).mean()
+        df['Wdiff_CV'] = df.Wdiff_CV.rolling(SMOOTH).mean()
         df['Hdiff'] = df.Hdiff.rolling(SMOOTH).mean()
         df['Wdiff'] = df.Wdiff.rolling(SMOOTH).mean()
-        df.plot(subplots=True, title="H_Error {} W_Error {}".format(df['Hdiff'].mean(),df['Wdiff'].mean()))
+        plt.figure()
+        plt.plot(df['Z_CV(m)'], label='Z_CV(m)', color='orange')
+        plt.plot(df['Z(m)'], label='Z(m)', color='blue')
+        plt.title("Z(m)")
+        plt.figure()
+        plt.plot(df['Hdiff_CV'], label='Hdiff_CV', color='orange')
+        plt.plot(df['Hdiff'], label='Hdiff', color='blue')
+        plt.title("Hdiff")
+        plt.legend()
+        plt.figure()
+        plt.plot(df['Wdiff_CV'], label='Wdiff_CV', color='orange')
+        plt.plot(df['Wdiff'], label='Wdiff', color='blue')
+        plt.title("Wdiff")
+        plt.legend()
         plt.tight_layout()
         plt.show()
+        print("Hdiff_CV {}".format(df['Hdiff_CV'].mean()))
+        print("Hdiff {}".format(df['Hdiff'].mean()))
+        print("Wdiff_CV {}".format(df['Wdiff_CV'].mean()))
+        print("Wdiff {}".format(df['Wdiff'].mean()))
     except KeyboardInterrupt:
         LCameraView.release()
         RCameraView.release()
