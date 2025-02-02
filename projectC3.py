@@ -3,6 +3,7 @@ import argparse
 import cv2 as cv
 import pandas as pd
 import numpy as np
+
 ##############################################################################################################
 # Axis definition
 X_AXIS = 1
@@ -70,15 +71,13 @@ def computeDisparityMap(imgL, imgR, disparity_range, block_size, imageDim, measu
     disparity_map += disparity_range[0]
     return disparity_map, measure_maps
 ##############################################################################################################  
-def secondBestRatio(dissimilarity_maps):
-    map = np.zeros_like(dissimilarity_maps[:,:,0])
-    for i in range(0, dissimilarity_maps.shape[Y_AXIS]):
-        for j in range(0, dissimilarity_maps.shape[X_AXIS]):
-            min = np.min(dissimilarity_maps[i,j,:])
-            index_min = np.argmin(dissimilarity_maps[i,j,:])
-            temp = np.delete(dissimilarity_maps[i,j,:], index_min)
-            second_min = np.min(temp)
-            map[i,j] = min / second_min
+def applyLocalFilter(disparity_map, block_size=21):
+    map = np.zeros_like(disparity_map)
+    offset = block_size // 2
+    for i in range(offset, disparity_map.shape[Y_AXIS] - offset):
+        for j in range(offset, disparity_map.shape[X_AXIS] - offset):
+            block = disparity_map[i - offset:i + offset + 1, j - offset:j + offset + 1]
+            map[i, j] = 255 - np.sum(np.abs(block - disparity_map[i, j]))
     return map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
@@ -100,11 +99,11 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgL = cv.cvtColor(frameL, cv.COLOR_BGR2GRAY)
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
-            disparity_map, maps = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
+            disparity_map, _ = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
             ######################################################
-            ratio_map = secondBestRatio(maps)
-            ratio_mask = ratio_map >= np.percentile(ratio_map, 70)
-            mainDisparity = np.average(disparity_map[ratio_mask])
+            map = applyLocalFilter(disparity_map)
+            mask = map >= np.percentile(map, 70)
+            mainDisparity = np.average(disparity_map[mask])
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             imgChessboard, h, w = computeChessboard(imgL, imageDim)
@@ -124,7 +123,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.figure('Display'); 
                 plt.clf()
                 plt.subplot(1,3,1)
-                plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
+                plt.imshow(map, vmin=map.min(), vmax=map.max(), cmap='gray')
                 plt.subplot(1,3,2)
                 plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
                 plt.subplot(1,3,3)

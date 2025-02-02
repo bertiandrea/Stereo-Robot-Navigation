@@ -106,8 +106,8 @@ def computeDisparityRange(main_disparity):
 ##############################################################################################################    
 def secondBestRatio(dissimilarity_maps):
     map = np.zeros_like(dissimilarity_maps[:,:,0])
-    for i in range(0, dissimilarity_maps.shape[0]):
-        for j in range(0, dissimilarity_maps.shape[1]):
+    for i in range(0, dissimilarity_maps.shape[Y_AXIS]):
+        for j in range(0, dissimilarity_maps.shape[X_AXIS]):
             min = np.min(dissimilarity_maps[i,j,:])
             index_min = np.argmin(dissimilarity_maps[i,j,:])
             temp = np.delete(dissimilarity_maps[i,j,:], index_min)
@@ -136,28 +136,31 @@ def generateOutputImage(frame, distance, imgSize, alarm):
 def computeObstaclesCoords(disparity_map, num_stripes):
     height, width = disparity_map.shape
     stripe_width = width // num_stripes
-    # Calcolo della disparità media per ogni striscia
+    # Calcolo della disparità media per ciascuna striscia
     main_disparities = []
     for i in range(0, num_stripes):
         stripe = disparity_map[:, stripe_width * i : stripe_width * (i + 1)]
         stripe_main_disparity = np.average(stripe)
         main_disparities.append(stripe_main_disparity)
-    # Determinazione delle coordinate 2D dei punti centrali delle strisce nell'immagine
+    # Calcolo delle coordinate 2D dei centri delle strisce nell'immagine
     frame_points = np.zeros((num_stripes, 2))
     for i in range(num_stripes):
-        frame_points[i] = [stripe_width * (i + 0.5), height / 2]  # Punto centrale della striscia
-    # Conversione delle coordinate dell'immagine al sistema con origine al centro dell'immagine
+        frame_points[i] = [stripe_width * (i + 0.5), height / 2]
+    # Traslazione del sistema di coordinate con origine al centro dell'immagine (u,v)
     image_points = frame_points - [width / 2, height / 2]
-    # Conversione delle coordinate dall'immagine alle coordinate reali (XZ)
+    # Conversione delle coordinate immagine (u,v) in coordinate reali (X,Z)
     XZ_coords = np.zeros((num_stripes, 2))
     for i in range(0, num_stripes):
         Z = (BASELINE * FOCAL_LENGHT) / main_disparities[i]
         X = image_points[i, 0] * Z / FOCAL_LENGHT
         XZ_coords[i] =  [X, Z]
+    
     # Approssimazione di una retta attraverso i punti XZ e calcolo dell'angolo
+    # Utilizziamo np.polyfit per una regressione lineare (Z = m*X + q)
     coef = np.polyfit(XZ_coords[:, 0], XZ_coords[:, 1], 1)
     angle_deg = math.degrees(math.atan(coef[0]))
-    # Normalizzazione delle coordinate tra 0 e 1
+
+    # Normalizzazione delle coordinate tra 0 e 1 (Useremo queste coordinate per disegnare la vista planare)
     XZ_coords[:, 0] = 0.5 + XZ_coords[:, 0] / (2 * np.max(XZ_coords[:, 0]))
     XZ_coords[:, 1] = 1 - XZ_coords[:, 1] / np.max(XZ_coords[:, 1])
     return XZ_coords, angle_deg
@@ -175,26 +178,51 @@ def drawPlanarView(norm_coords, angle):
     cv.rectangle(view, (178,343), (192,349), (0,0,0), thickness=cv.FILLED)
     cv.rectangle(view, (208,343), (222,349), (0,0,0), thickness=cv.FILLED)
     # Scalatura delle coordinate per la visualizzazione
-    scaled_coords = norm_coords * 320 + 40  # Scalatura delle coordinate per la visualizzazione
+    scaled_coords = norm_coords * 320 + 40  # scala i valori da [0,1] a [40,360]
+    # Disegno degli ostacoli (rettangoli)
     for c in scaled_coords:
         cv.rectangle(view, (int(c[0] - obst_width), int(c[1] - 4)), (int(c[0] + obst_width), int(c[1] + 4)), (0, 0, 0), cv.FILLED)
-    # Disegno dell'angolo
+    # Visualizzazione dell'angolo calcolato
     cv.putText(img=view, text="{:.1f} deg".format(angle), org=(24, 320),
                 fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (127, 127, 127), thickness = 5, lineType = cv.LINE_AA)
-    # Disegno della retta che approssima gli ostacoli
+    # Approssimazione di una retta attraverso gli ostacoli scalati e disegno della stessa
     coef = np.polyfit(scaled_coords[:,0], scaled_coords[:,1], 1)
     poly1d_fn = np.poly1d(coef)
     l_start = (20, int(poly1d_fn(20)))
     l_end = (360, int(poly1d_fn(360)))
     cv.line(view, l_start, l_end, (0, 127, 0), 3)
     return view
-
+##############################################################################################################  
+def applyLocalFilter(disparity_map, block_size=21):
+    map = np.zeros_like(disparity_map)
+    offset = block_size // 2
+    for i in range(offset, disparity_map.shape[Y_AXIS] - offset):
+        for j in range(offset, disparity_map.shape[X_AXIS] - offset):
+            block = disparity_map[i - offset:i + offset + 1, j - offset:j + offset + 1]
+            map[i, j] = 255 - np.sum(np.abs(block - disparity_map[i, j]))
+    return map
+##############################################################################################################
+def applyCrossCheck(disparity_map_L, disparity_map_R):
+    map = np.zeros(disparity_map_L.shape)
+    for i in range(disparity_map_L.shape[Y_AXIS]):
+        for j in range(disparity_map_L.shape[X_AXIS]):
+            dL = disparity_map_L[i, j]
+            x_shifted = int(j - dL) 
+            if 0 <= x_shifted < disparity_map_L.shape[X_AXIS]:
+                dR = disparity_map_R[i, x_shifted]
+                map[i, j] = 255 - abs(dL - dR)
+            else:
+                map[i, j] = 0.0
+    return map
+################################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
     df = pd.DataFrame(columns = [
         'Hdiff_CV','Wdiff_CV',
         'Hdiff','Wdiff',
         'Hdiff_RATIO','Wdiff_RATIO',
         'Hdiff_MORAVEC','Wdiff_MORAVEC'
+        'Hdiff_LOCAL','Wdiff_LOCAL'
+        'Hdiff_CROSS','Wdiff_CROSS'
         ])
     LCameraView = cv.VideoCapture('robotL.avi')
     RCameraView = cv.VideoCapture('robotR.avi')
@@ -232,6 +260,17 @@ def main(numDisparities, blockSize, imageDim, display = False):
             mainDisparity = np.average(disparity_map[moravec_mask])
             z_moravec = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
+            local_map = applyLocalFilter(disparity_map, blockSize)
+            local_mask = local_map >= np.percentile(local_map, 70)
+            mainDisparity = np.average(disparity_map[local_mask])
+            z_local = (FOCAL_LENGHT * BASELINE) / mainDisparity
+            ######################################################
+            disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
+            cross_map = applyCrossCheck(disparity_map, disparity_map_R)
+            cross_mask = cross_map >= np.percentile(cross_map, 70)
+            mainDisparity = np.average(disparity_map[cross_mask])
+            z_cross = (FOCAL_LENGHT * BASELINE) / mainDisparity
+            ######################################################
             output_image = generateOutputImage(frameL, z, imageDim, MINIMUM_DISTANCE)
             ######################################################
             coords, angle = computeObstaclesCoords(disparity_map, 5)
@@ -256,6 +295,14 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 WComputed = (z_moravec * w) / FOCAL_LENGHT
                 Hdiff_MORAVEC = abs(HComputed - H)
                 Wdiff_MORAVEC = abs(WComputed - W)
+                HComputed = (z_local * h) / FOCAL_LENGHT
+                WComputed = (z_local * w) / FOCAL_LENGHT
+                Hdiff_LOCAL = abs(HComputed - H)
+                Wdiff_LOCAL = abs(WComputed - W)
+                HComputed = (z_cross * h) / FOCAL_LENGHT
+                WComputed = (z_cross * w) / FOCAL_LENGHT
+                Hdiff_CROSS = abs(HComputed - H)
+                Wdiff_CROSS = abs(WComputed - W)
             else:
                 Hdiff_CV = None
                 Wdiff_CV = None
@@ -265,22 +312,30 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 Wdiff_RATIO = None
                 Hdiff_MORAVEC = None
                 Wdiff_MORAVEC = None
+                Hdiff_LOCAL = None
+                Wdiff_LOCAL = None
+                Hdiff_CROSS = None
+                Wdiff_CROSS = None
             ######################################################
             if(display):
                 plt.figure('Display'); 
                 plt.clf()
-                plt.subplot(2,3,1)
+                plt.subplot(2,4,1)
                 plt.imshow(output_image)
-                plt.subplot(2,3,2)
+                plt.subplot(2,4,2)
                 plt.imshow(cv_disparity_map, vmin=cv_disparity_map.min(), vmax=cv_disparity_map.max(), cmap='gray')
-                plt.subplot(2,3,3)
+                plt.subplot(2,4,3)
                 plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
-                plt.subplot(2,3,4)
-                plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
-                plt.subplot(2,3,5)
-                plt.imshow(moravec_map, vmin=moravec_map.min(), vmax=moravec_map.max(), cmap='gray')
-                plt.subplot(2,3,6)
+                plt.subplot(2,4,4)
                 plt.imshow(planar_view)
+                plt.subplot(2,4,5)
+                plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
+                plt.subplot(2,4,6)
+                plt.imshow(moravec_map, vmin=moravec_map.min(), vmax=moravec_map.max(), cmap='gray')
+                plt.subplot(2,4,7)
+                plt.imshow(local_map, vmin=local_map.min(), vmax=local_map.max(), cmap='gray')
+                plt.subplot(2,4,8)
+                plt.imshow(cross_map, vmin=cross_map.min(), vmax=cross_map.max(), cmap='gray')
                 plt.pause(0.000001)
             ######################################################
             # Update dataframe with current frame infos
@@ -292,7 +347,11 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 'Hdiff_RATIO': Hdiff_RATIO,
                 'Wdiff_RATIO': Wdiff_RATIO,
                 'Hdiff_MORAVEC': Hdiff_MORAVEC,
-                'Wdiff_MORAVEC': Wdiff_MORAVEC
+                'Wdiff_MORAVEC': Wdiff_MORAVEC,
+                'Hdiff_LOCAL': Hdiff_LOCAL,
+                'Wdiff_LOCAL': Wdiff_LOCAL,
+                'Hdiff_CROSS': Hdiff_CROSS,
+                'Wdiff_CROSS': Wdiff_CROSS
             }
             ######################################################
             print("Main Disparity: {}".format(mainDisparity))
@@ -307,6 +366,10 @@ def main(numDisparities, blockSize, imageDim, display = False):
         df= df[df['Wdiff_RATIO'] != None]
         df= df[df['Hdiff_MORAVEC'] != None]
         df= df[df['Wdiff_MORAVEC'] != None]
+        df= df[df['Hdiff_LOCAL'] != None]
+        df= df[df['Wdiff_LOCAL'] != None]
+        df= df[df['Hdiff_CROSS'] != None]
+        df= df[df['Wdiff_CROSS'] != None]
         df['Hdiff_CV'] = df.Hdiff_CV.rolling(SMOOTH).mean()
         df['Wdiff_CV'] = df.Wdiff_CV.rolling(SMOOTH).mean()
         df['Hdiff'] = df.Hdiff.rolling(SMOOTH).mean()
@@ -315,11 +378,17 @@ def main(numDisparities, blockSize, imageDim, display = False):
         df['Wdiff_RATIO'] = df.Wdiff_RATIO.rolling(SMOOTH).mean()
         df['Hdiff_MORAVEC'] = df.Hdiff_MORAVEC.rolling(SMOOTH).mean()
         df['Wdiff_MORAVEC'] = df.Wdiff_MORAVEC.rolling(SMOOTH).mean()
+        df['Hdiff_LOCAL'] = df.Hdiff_LOCAL.rolling(SMOOTH).mean()
+        df['Wdiff_LOCAL'] = df.Wdiff_LOCAL.rolling(SMOOTH).mean()
+        df['Hdiff_CROSS'] = df.Hdiff_CROSS.rolling(SMOOTH).mean()
+        df['Wdiff_CROSS'] = df.Wdiff_CROSS.rolling(SMOOTH).mean()
         plt.figure()
         plt.plot(df['Hdiff_CV'], label='Hdiff_CV', color='orange')
         plt.plot(df['Hdiff'], label='Hdiff', color='blue')
         plt.plot(df['Hdiff_RATIO'], label='Hdiff_RATIO', color='green')
         plt.plot(df['Hdiff_MORAVEC'], label='Hdiff_MORAVEC', color='red')
+        plt.plot(df['Hdiff_LOCAL'], label='Hdiff_LOCAL', color='purple')
+        plt.plot(df['Hdiff_CROSS'], label='Hdiff_CROSS', color='black')
         plt.title("Hdiff")
         plt.legend()
         plt.figure()
@@ -327,6 +396,8 @@ def main(numDisparities, blockSize, imageDim, display = False):
         plt.plot(df['Wdiff'], label='Wdiff', color='blue')
         plt.plot(df['Wdiff_RATIO'], label='Wdiff_RATIO', color='green')
         plt.plot(df['Wdiff_MORAVEC'], label='Wdiff_MORAVEC', color='red')
+        plt.plot(df['Wdiff_LOCAL'], label='Wdiff_LOCAL', color='purple')
+        plt.plot(df['Wdiff_CROSS'], label='Wdiff_CROSS', color='black')
         plt.title("Wdiff")
         plt.legend()
         plt.tight_layout()
@@ -335,10 +406,14 @@ def main(numDisparities, blockSize, imageDim, display = False):
         print("Hdiff {}".format(df['Hdiff'].mean()))
         print("Hdiff_RATIO {}".format(df['Hdiff_RATIO'].mean()))
         print("Hdiff_MORAVEC {}".format(df['Hdiff_MORAVEC'].mean()))
+        print("Hdiff_LOCAL {}".format(df['Hdiff_LOCAL'].mean()))
+        print("Hdiff_CROSS {}".format(df['Hdiff_CROSS'].mean()))
         print("Wdiff_CV {}".format(df['Wdiff_CV'].mean()))
         print("Wdiff {}".format(df['Wdiff'].mean()))
         print("Wdiff_RATIO {}".format(df['Wdiff_RATIO'].mean()))
         print("Wdiff_MORAVEC {}".format(df['Wdiff_MORAVEC'].mean()))
+        print("Wdiff_LOCAL {}".format(df['Wdiff_LOCAL'].mean()))
+        print("Wdiff_CROSS {}".format(df['Wdiff_CROSS'].mean()))
     except KeyboardInterrupt:
         LCameraView.release()
         RCameraView.release()

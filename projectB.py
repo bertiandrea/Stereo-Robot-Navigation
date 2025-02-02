@@ -90,28 +90,31 @@ def generateOutputImage(frame, distance, imgSize, alarm):
 def computeObstaclesCoords(disparity_map, num_stripes):
     height, width = disparity_map.shape
     stripe_width = width // num_stripes
-    # Calcolo della disparità media per ogni striscia
+    # Calcolo della disparità media per ciascuna striscia
     main_disparities = []
     for i in range(0, num_stripes):
         stripe = disparity_map[:, stripe_width * i : stripe_width * (i + 1)]
         stripe_main_disparity = np.average(stripe)
         main_disparities.append(stripe_main_disparity)
-    # Determinazione delle coordinate 2D dei punti centrali delle strisce nell'immagine
+    # Calcolo delle coordinate 2D dei centri delle strisce nell'immagine
     frame_points = np.zeros((num_stripes, 2))
     for i in range(num_stripes):
-        frame_points[i] = [stripe_width * (i + 0.5), height / 2]  # Punto centrale della striscia
-    # Conversione delle coordinate dell'immagine al sistema con origine al centro dell'immagine
+        frame_points[i] = [stripe_width * (i + 0.5), height / 2]
+    # Traslazione del sistema di coordinate con origine al centro dell'immagine (u,v)
     image_points = frame_points - [width / 2, height / 2]
-    # Conversione delle coordinate dall'immagine alle coordinate reali (XZ)
+    # Conversione delle coordinate immagine (u,v) in coordinate reali (X,Z)
     XZ_coords = np.zeros((num_stripes, 2))
     for i in range(0, num_stripes):
         Z = (BASELINE * FOCAL_LENGHT) / main_disparities[i]
         X = image_points[i, 0] * Z / FOCAL_LENGHT
         XZ_coords[i] =  [X, Z]
+    
     # Approssimazione di una retta attraverso i punti XZ e calcolo dell'angolo
+    # Utilizziamo np.polyfit per una regressione lineare (Z = m*X + q)
     coef = np.polyfit(XZ_coords[:, 0], XZ_coords[:, 1], 1)
     angle_deg = math.degrees(math.atan(coef[0]))
-    # Normalizzazione delle coordinate tra 0 e 1
+
+    # Normalizzazione delle coordinate tra 0 e 1 (Useremo queste coordinate per disegnare la vista planare)
     XZ_coords[:, 0] = 0.5 + XZ_coords[:, 0] / (2 * np.max(XZ_coords[:, 0]))
     XZ_coords[:, 1] = 1 - XZ_coords[:, 1] / np.max(XZ_coords[:, 1])
     return XZ_coords, angle_deg
@@ -129,13 +132,14 @@ def drawPlanarView(norm_coords, angle):
     cv.rectangle(view, (178,343), (192,349), (0,0,0), thickness=cv.FILLED)
     cv.rectangle(view, (208,343), (222,349), (0,0,0), thickness=cv.FILLED)
     # Scalatura delle coordinate per la visualizzazione
-    scaled_coords = norm_coords * 320 + 40  # Scalatura delle coordinate per la visualizzazione
+    scaled_coords = norm_coords * 320 + 40  # scala i valori da [0,1] a [40,360]
+    # Disegno degli ostacoli (rettangoli)
     for c in scaled_coords:
         cv.rectangle(view, (int(c[0] - obst_width), int(c[1] - 4)), (int(c[0] + obst_width), int(c[1] + 4)), (0, 0, 0), cv.FILLED)
-    # Disegno dell'angolo
+    # Visualizzazione dell'angolo calcolato
     cv.putText(img=view, text="{:.1f} deg".format(angle), org=(24, 320),
                 fontFace = cv.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (127, 127, 127), thickness = 5, lineType = cv.LINE_AA)
-    # Disegno della retta che approssima gli ostacoli
+    # Approssimazione di una retta attraverso gli ostacoli scalati e disegno della stessa
     coef = np.polyfit(scaled_coords[:,0], scaled_coords[:,1], 1)
     poly1d_fn = np.poly1d(coef)
     l_start = (20, int(poly1d_fn(20)))

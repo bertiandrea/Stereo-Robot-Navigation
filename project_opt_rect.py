@@ -92,9 +92,11 @@ def alignImages(imgL, imgR):
     ptsL = np.float32([kpL[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
     ptsR = np.float32([kpR[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
     H, mask = cv.findHomography(ptsL, ptsR, cv.FM_RANSAC, 5.0)
+    # Get the rotation angle
     theta = -np.arctan2(H[0, 1], H[0, 0])  # Angle in radians
     angle = np.degrees(theta)  # Convert to degrees
     print("Correction angle: {:.2f}".format(angle))
+    # Rotate the right image
     h_right, w_right = imgR.shape
     center = (w_right // 2, h_right // 2)
     M = cv.getRotationMatrix2D(center, angle, 1.0)

@@ -3,6 +3,7 @@ import argparse
 import cv2 as cv
 import pandas as pd
 import numpy as np
+
 ##############################################################################################################
 # Axis definition
 X_AXIS = 1
@@ -69,16 +70,18 @@ def computeDisparityMap(imgL, imgR, disparity_range, block_size, imageDim, measu
     disparity_map = np.argmin(measure_maps, axis=-1)
     disparity_map += disparity_range[0]
     return disparity_map, measure_maps
-##############################################################################################################  
-def secondBestRatio(dissimilarity_maps):
-    map = np.zeros_like(dissimilarity_maps[:,:,0])
-    for i in range(0, dissimilarity_maps.shape[Y_AXIS]):
-        for j in range(0, dissimilarity_maps.shape[X_AXIS]):
-            min = np.min(dissimilarity_maps[i,j,:])
-            index_min = np.argmin(dissimilarity_maps[i,j,:])
-            temp = np.delete(dissimilarity_maps[i,j,:], index_min)
-            second_min = np.min(temp)
-            map[i,j] = min / second_min
+##############################################################################################################
+def applyCrossCheck(disparity_map_L, disparity_map_R):
+    map = np.zeros(disparity_map_L.shape)
+    for i in range(disparity_map_L.shape[Y_AXIS]):
+        for j in range(disparity_map_L.shape[X_AXIS]):
+            dL = disparity_map_L[i, j]
+            x_shifted = int(j - dL) 
+            if 0 <= x_shifted < disparity_map_R.shape[X_AXIS]:
+                dR = disparity_map_R[i, x_shifted]
+                map[i, j] = 255 - abs(dL - dR)
+            else:
+                map[i, j] = 0.0
     return map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
@@ -100,11 +103,12 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgL = cv.cvtColor(frameL, cv.COLOR_BGR2GRAY)
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
-            disparity_map, maps = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
+            disparity_map_L, _ = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
+            disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
             ######################################################
-            ratio_map = secondBestRatio(maps)
-            ratio_mask = ratio_map >= np.percentile(ratio_map, 70)
-            mainDisparity = np.average(disparity_map[ratio_mask])
+            map = applyCrossCheck(disparity_map_L, disparity_map_R)
+            mask = map >= np.percentile(map, 70)
+            mainDisparity = np.average(disparity_map_L[mask])
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             imgChessboard, h, w = computeChessboard(imgL, imageDim)
@@ -124,9 +128,9 @@ def main(numDisparities, blockSize, imageDim, display = False):
                 plt.figure('Display'); 
                 plt.clf()
                 plt.subplot(1,3,1)
-                plt.imshow(ratio_map, vmin=ratio_map.min(), vmax=ratio_map.max(), cmap='gray')
+                plt.imshow(map, vmin=map.min(), vmax=map.max(), cmap='gray')
                 plt.subplot(1,3,2)
-                plt.imshow(disparity_map, vmin=disparity_map.min(), vmax=disparity_map.max(), cmap='gray')
+                plt.imshow(disparity_map_L, vmin=disparity_map_L.min(), vmax=disparity_map_L.max(), cmap='gray')
                 plt.subplot(1,3,3)
                 plt.imshow(imgChessboard, cmap='gray')
                 plt.pause(0.000001)
