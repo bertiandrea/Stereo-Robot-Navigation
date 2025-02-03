@@ -280,7 +280,9 @@ def main(numDisparities, blockSize, imageDim, display = False):
             mainDisparity = np.average(disparity_map[local_mask])
             z_local = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
+            disparity_range = np.arange(- numDisparities, 0) # Invert Disparity Range
             disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
+            disparity_map_R = np.abs(disparity_map_R) # Invert Disparity values
             cross_map = applyCrossCheck(disparity_map, disparity_map_R)
             cross_mask = cross_map >= np.percentile(cross_map, 70)
             mainDisparity = np.average(disparity_map[cross_mask])

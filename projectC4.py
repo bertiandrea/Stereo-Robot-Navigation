@@ -107,8 +107,10 @@ def main(numDisparities, blockSize, imageDim, display = False):
             imgR = cv.cvtColor(frameR, cv.COLOR_BGR2GRAY)
             ######################################################
             disparity_map_L, _ = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
-            disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
             ######################################################
+            disparity_range = np.arange(- numDisparities, 0) # Invert Disparity Range
+            disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
+            disparity_map_R = np.abs(disparity_map_R) # Invert Disparity values
             map = applyCrossCheck(disparity_map_L, disparity_map_R)
             mask = map >= np.percentile(map, 70)
             mainDisparity = np.average(disparity_map_L[mask])
