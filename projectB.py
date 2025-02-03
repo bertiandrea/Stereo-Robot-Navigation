@@ -230,7 +230,7 @@ def getParams():
     parser.add_argument('--imageDim',default='200', help='Image box dimension to cut from original frames', type=int)
     parser.add_argument('--numDisparities',default='128', help='Disparities number parameter for disparity map algorithm', type=int)
     parser.add_argument('--blockSize',default=BEST_BLOCKSIZE_VALUE, help='Block size parameter for disparity map algorithm', type=int)
-    parser.add_argument('--display',default='False', help='Display the output', type=bool)
+    parser.add_argument('--display', help='Display the results', action='store_true')
     return parser.parse_args()
 
 if __name__ == "__main__":

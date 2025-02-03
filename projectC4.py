@@ -108,7 +108,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
             ######################################################
             disparity_map_L, _ = computeDisparityMap(imgL, imgR, disparity_range, blockSize, imageDim, M_SAD)
             ######################################################
-            disparity_range = np.arange(- numDisparities, 0) # Invert Disparity Range
+            disparity_range = np.arange(-disparity_range[-1], -disparity_range[0]) # Invert Disparity Range
             disparity_map_R, _ = computeDisparityMap(imgR, imgL, disparity_range, blockSize, imageDim, M_SAD)
             disparity_map_R = np.abs(disparity_map_R) # Invert Disparity values
             map = applyCrossCheck(disparity_map_L, disparity_map_R)
@@ -175,7 +175,7 @@ def getParams():
     parser.add_argument('--imageDim',default='200', help='Image box dimension to cut from original frames', type=int)
     parser.add_argument('--numDisparities',default='128', help='Disparities number parameter for disparity map algorithm', type=int)
     parser.add_argument('--blockSize',default=BEST_BLOCKSIZE_VALUE, help='Block size parameter for disparity map algorithm', type=int)
-    parser.add_argument('--display',default='False', help='Display the output', type=bool)
+    parser.add_argument('--display', help='Display the results', action='store_true')
     return parser.parse_args()
 
 if __name__ == "__main__":
