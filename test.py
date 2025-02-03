@@ -79,7 +79,11 @@ def moravecOperator(image, imgDim, block_size, measure = M_SAD):
             differences = np.abs(ROI-dir_ROI)      
         measure_map = cv.filter2D(src=differences, ddepth=-1, kernel=kernel, borderType=cv.BORDER_ISOLATED)
         measure_maps[:, :, i] = measure_map
-    return np.min(measure_maps, axis=-1)
+    map = np.min(measure_maps, axis=-1)
+    
+    # Normalization
+    map = (map - np.min(map)) / (np.max(map) - np.min(map))
+    return map
 ################################################################################################################
 def computeChessboard(imgL, imageDim):
     ret, corners = cv.findChessboardCorners(imgL ,(CB_INNER_H_CORNERS,CB_INNER_W_CORNERS))
@@ -112,7 +116,13 @@ def secondBestRatio(dissimilarity_maps):
             index_min = np.argmin(dissimilarity_maps[i,j,:])
             temp = np.delete(dissimilarity_maps[i,j,:], index_min)
             second_min = np.min(temp)
-            map[i,j] = min/second_min
+            map[i,j] = min / second_min
+            
+    # Normalization
+    map = (map - np.min(map)) / (np.max(map) - np.min(map))
+    # Higher values indicate a better match (Second Best is really far from the best -> min/second_min is close to 0)
+    # 1 = min, 100 = second_min -> 1/100 = 0.01 -> 1 - 0.01 = 0.99 -> Good match
+    map = 1 - map
     return map
 ##############################################################################################################
 def generateOutputImage(frame, distance, imgSize, alarm):
@@ -193,26 +203,31 @@ def drawPlanarView(norm_coords, angle):
     cv.line(view, l_start, l_end, (0, 127, 0), 3)
     return view
 ##############################################################################################################  
-def applyLocalFilter(disparity_map, block_size=21):
-    map = np.zeros_like(disparity_map)
-    offset = block_size // 2
-    for i in range(offset, disparity_map.shape[Y_AXIS] - offset):
-        for j in range(offset, disparity_map.shape[X_AXIS] - offset):
-            block = disparity_map[i - offset:i + offset + 1, j - offset:j + offset + 1]
-            map[i, j] = 255 - np.sum(np.abs(block - disparity_map[i, j]))
-    return map
+def applyLocalFilter(disparity_map, block_size=25):
+    mean_map = cv.boxFilter(disparity_map.astype(np.float32), ddepth=-1, ksize=(block_size, block_size)) # E[X]
+    mean_squared_map = cv.boxFilter(np.square(disparity_map.astype(np.float32)), ddepth=-1, ksize=(block_size, block_size)) # E[X^2]
+    variance_map = mean_squared_map - np.square(mean_map) # Local Variance: E[X^2] - (E[X])^2
+
+    # Normalization
+    variance_map = (variance_map - np.min(variance_map)) / (np.max(variance_map) - np.min(variance_map))
+    # Higher values indicate a better match (i.e., less variance)
+    variance_map = 1 - variance_map
+    return variance_map
 ##############################################################################################################
 def applyCrossCheck(disparity_map_L, disparity_map_R):
-    map = np.zeros(disparity_map_L.shape)
+    map = np.zeros_like(disparity_map_L)
+    j_indices = np.arange(disparity_map_L.shape[X_AXIS])
+    x_shifted = j_indices - disparity_map_L
+    valid_mask = (x_shifted >= 0) & (x_shifted < disparity_map_R.shape[X_AXIS])
     for i in range(disparity_map_L.shape[Y_AXIS]):
         for j in range(disparity_map_L.shape[X_AXIS]):
-            dL = disparity_map_L[i, j]
-            x_shifted = int(j - dL) 
-            if 0 <= x_shifted < disparity_map_L.shape[X_AXIS]:
-                dR = disparity_map_R[i, x_shifted]
-                map[i, j] = 255 - abs(dL - dR)
-            else:
-                map[i, j] = 0.0
+            if valid_mask[i,j]:
+                map[i,j] = abs(disparity_map_L[i,j] - disparity_map_R[i, x_shifted[i,j]])
+
+    # Normalization
+    map = (map - np.min(map[valid_mask])) / (np.max(map[valid_mask]) - np.min(map[valid_mask]))
+    # Higher values indicate a better match (i.e., less disparity difference)
+    map[valid_mask] = 1 - map[valid_mask]
     return map
 ################################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
@@ -251,7 +266,7 @@ def main(numDisparities, blockSize, imageDim, display = False):
             z = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################
             ratio_map = secondBestRatio(map)
-            ratio_mask = ratio_map > np.percentile(ratio_map, 70)
+            ratio_mask = ratio_map >= np.percentile(ratio_map, 70)
             mainDisparity = np.average(disparity_map[ratio_mask])
             z_ratio = (FOCAL_LENGHT * BASELINE) / mainDisparity
             ######################################################

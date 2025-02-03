@@ -88,7 +88,11 @@ def moravecOperator(image, imgDim, block_size, measure = M_SAD):
             differences = np.abs(ROI-dir_ROI)      
         measure_map = cv.filter2D(src=differences, ddepth=-1, kernel=kernel, borderType=cv.BORDER_ISOLATED)
         measure_maps[:, :, i] = measure_map
-    return np.min(measure_maps, axis=-1)
+    map = np.min(measure_maps, axis=-1)
+    
+    # Normalization
+    map = (map - np.min(map)) / (np.max(map) - np.min(map))
+    return map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
     df = pd.DataFrame(columns = ['Z(m)','Hdiff','Wdiff'])

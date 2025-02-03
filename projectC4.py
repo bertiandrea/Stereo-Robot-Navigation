@@ -72,16 +72,19 @@ def computeDisparityMap(imgL, imgR, disparity_range, block_size, imageDim, measu
     return disparity_map, measure_maps
 ##############################################################################################################
 def applyCrossCheck(disparity_map_L, disparity_map_R):
-    map = np.zeros(disparity_map_L.shape)
+    map = np.zeros_like(disparity_map_L)
+    j_indices = np.arange(disparity_map_L.shape[X_AXIS])
+    x_shifted = j_indices - disparity_map_L
+    valid_mask = (x_shifted >= 0) & (x_shifted < disparity_map_R.shape[X_AXIS])
     for i in range(disparity_map_L.shape[Y_AXIS]):
         for j in range(disparity_map_L.shape[X_AXIS]):
-            dL = disparity_map_L[i, j]
-            x_shifted = int(j - dL) 
-            if 0 <= x_shifted < disparity_map_R.shape[X_AXIS]:
-                dR = disparity_map_R[i, x_shifted]
-                map[i, j] = 255 - abs(dL - dR)
-            else:
-                map[i, j] = 0.0
+            if valid_mask[i,j]:
+                map[i,j] = abs(disparity_map_L[i,j] - disparity_map_R[i, x_shifted[i,j]])
+
+    # Normalization
+    map = (map - np.min(map[valid_mask])) / (np.max(map[valid_mask]) - np.min(map[valid_mask]))
+    # Higher values indicate a better match (i.e., less disparity difference)
+    map[valid_mask] = 1 - map[valid_mask]
     return map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):

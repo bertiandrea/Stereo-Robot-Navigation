@@ -71,14 +71,27 @@ def computeDisparityMap(imgL, imgR, disparity_range, block_size, imageDim, measu
     disparity_map += disparity_range[0]
     return disparity_map, measure_maps
 ##############################################################################################################  
-def applyLocalFilter(disparity_map, block_size=21):
-    map = np.zeros_like(disparity_map)
-    offset = block_size // 2
-    for i in range(offset, disparity_map.shape[Y_AXIS] - offset):
-        for j in range(offset, disparity_map.shape[X_AXIS] - offset):
-            block = disparity_map[i - offset:i + offset + 1, j - offset:j + offset + 1]
-            map[i, j] = 255 - np.sum(np.abs(block - disparity_map[i, j]))
-    return map
+def applyLocalFilter(disparity_map, block_size=25):
+    # map = np.zeros_like(disparity_map)
+    # valid_mask = (disparity_map.shape[Y_AXIS] - block_size >= 0) and (disparity_map.shape[X_AXIS] - block_size >= 0)
+    # for i in range(disparity_map.shape[Y_AXIS]):
+    #     for j in range(disparity_map.shape[X_AXIS]):
+    #         if valid_mask:
+    #             map[i, j] = np.var(disparity_map[i:i+block_size, j:j+block_size])
+    # Normalization
+    # map = (map - np.min(map[valid_mask])) / (np.max(map[valid_mask]) - np.min(map[valid_mask]))
+    # Higher values indicate a better match (i.e., less disparity difference)
+    # map[valid_mask] = 1 - map[valid_mask]
+
+    mean_map = cv.boxFilter(disparity_map.astype(np.float32), ddepth=-1, ksize=(block_size, block_size)) # E[X]
+    mean_squared_map = cv.boxFilter(np.square(disparity_map.astype(np.float32)), ddepth=-1, ksize=(block_size, block_size)) # E[X^2]
+    variance_map = mean_squared_map - np.square(mean_map) # Local Variance: E[X^2] - (E[X])^2
+
+    # Normalization
+    variance_map = (variance_map - np.min(variance_map)) / (np.max(variance_map) - np.min(variance_map))
+    # Higher values indicate a better match (i.e., less variance)
+    variance_map = 1 - variance_map
+    return variance_map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
     df = pd.DataFrame(columns = ['Z(m)','Hdiff','Wdiff'])

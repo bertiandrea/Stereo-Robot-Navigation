@@ -79,6 +79,12 @@ def secondBestRatio(dissimilarity_maps):
             temp = np.delete(dissimilarity_maps[i,j,:], index_min)
             second_min = np.min(temp)
             map[i,j] = min / second_min
+            
+    # Normalization
+    map = (map - np.min(map)) / (np.max(map) - np.min(map))
+    # Higher values indicate a better match (Second Best is really far from the best -> min/second_min is close to 0)
+    # 1 = min, 100 = second_min -> 1/100 = 0.01 -> 1 - 0.01 = 0.99 -> Good match
+    map = 1 - map
     return map
 ##############################################################################################################
 def main(numDisparities, blockSize, imageDim, display = False):
